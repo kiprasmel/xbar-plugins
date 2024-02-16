@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+
+/**
+ * loads all ENV variables from the plugin directory
+ */
+
+fs = require("fs")
+path = require("path")
+
+plugindir = `${process.env.HOME}/Library/Application Support/xbar/plugins`
+filepaths = fs.readdirSync(plugindir).map(file => path.join(plugindir, file))
+varFilepaths = filepaths.filter(x => x.endsWith(".vars.json"))
+envVarsAll = varFilepaths.map(fp => {
+	str = fs.readFileSync(fp).toString()
+	json = JSON.parse(str)
+	entries = Object.entries(json).map(([k,v]) => `export ${k}=${v}`)
+	envVars = entries.join("\n") + "\n"
+	return envVars
+})
+
+process.stdout.write(envVarsAll + "\n")
