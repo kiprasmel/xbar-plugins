@@ -13,7 +13,7 @@ varFilepaths = filepaths.filter(x => x.endsWith(".vars.json"))
 envVarsAll = varFilepaths.map(fp => {
 	str = fs.readFileSync(fp).toString()
 	json = JSON.parse(str)
-	entries = Object.entries(json).map(([k,v]) => `export ${k}="${v}"`)
+	entries = Object.entries(json).map(([k,v]) => `export ${k}=${v}`)
 	envVars = entries.join("\n") + "\n"
 	return envVars
 })
