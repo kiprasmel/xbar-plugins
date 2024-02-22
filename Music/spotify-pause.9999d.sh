@@ -31,4 +31,4 @@ else
   state_icon="▶"
 fi
 
-echo "$state_icon | bash='$0' param1=playpause terminal=false refresh=false"
+echo "$state_icon | shell='$0' param1=playpause terminal=false refresh=false"

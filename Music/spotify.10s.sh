@@ -27,7 +27,7 @@ CLEAN_TRACK_NAMES=1
 CLEAN_ALBUM_NAMES=1
 
 # The length of a track/artist name after which to truncate.
-TRUNC_LEN=18
+TRUNC_LEN=4
 # String used when replacing truncated text.
 TRUNC_SUFFIX="..."
 # Comment out this line to disable cycling through track/artist
@@ -70,6 +70,8 @@ function printdefault() {
 
 # Truncate or cycle track and artist
 function printtitle() {
+  echo "♫"
+  return 0
   output=$1
   # Only cycle title while playing
   if [ $CYCLE_TRACK_ARTIST ] && [ "$state" = "playing" ]; then
@@ -178,9 +180,8 @@ if [ "$track_type" == "PODCAST" ]; then
 elif [ "$track_type" == "SONG" ]; then
   printtitle "$track - $artist"
   echo "---"
-  echo -e "Track:\\t$track"
-  echo -e "Artist:\\t$artist"
-  echo -e "Album:\\t$album"
+  echo -e "$track"
+  echo -e "$artist"
 fi
 echo "---"
 
