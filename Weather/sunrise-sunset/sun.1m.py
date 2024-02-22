@@ -16,9 +16,10 @@
 # <xbar.var>string(VAR_LATITUDE=0.00000): Your latitude to calculate the sun position.</xbar.var>
 # <xbar.var>string(VAR_LONGITUDE=0.00000): Your longitude to calculate the sun position.</xbar.var>
 # <xbar.var>number(VAR_WIDTH_COMPRESSION_FACTOR=20): The bigger the compression, the smaller the width. Explanation: To accuratelly represent all 1440 minutes in a day, you'd need 1440px of width. Instead, choose how much to compress the width. A compression factor of 20 means that you'll see the visual indicator move slightly every 20 minutes. min = 2, max = 60 (1440/60 = 24 = 1 per hour).</xbar.var>
-# <xbar.var>number(VAR_HEIGHT=8): How tall do you want the indicator to be?</xbar.var>
+# <xbar.var>number(VAR_HEIGHT=10): How tall do you want the indicator to be?</xbar.var>
 # <xbar.var>number(VAR_BORDER_WIDTH=1): How big should the borders be?</xbar.var>
-# <xbar.var>number(VAR_HOURS_OFFSET=0): Debug: how many hours to offset?</xbar.var>
+# <xbar.var>number(VAR_HOURS_OFFSET=0): Ever wanted to travel in time?</xbar.var>
+# <xbar.var>boolean(VAR_DRAW_TIME_UNTIL_NEXT_PHASE=false): Display the "time until next phase" indicator?</xbar.var>
 
 import os
 import io
@@ -30,7 +31,7 @@ from datetime import datetime, timezone, timedelta
 
 # deps
 from suntime import Sun
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from colors import color as ansicolor
 
 def main():
@@ -41,14 +42,16 @@ def main():
 	# begin customizable #
 	# ------------------ #
 
-	LATITUDE  = env("VAR_LATITUDE",  0.00000, float)
-	LONGITUDE = env("VAR_LONGITUDE", 0.00000, float)
+	LATITUDE  = env("VAR_LATITUDE",  "0.00000", float)
+	LONGITUDE = env("VAR_LONGITUDE", "0.00000", float)
 
 	WIDTH_COMPRESSION_FACTOR = env("VAR_WIDTH_COMPRESSION_FACTOR", 20, int)
 	HOURS_OFFSET             = env("VAR_HOURS_OFFSET",              0, int)
 
 	height       = env("VAR_HEIGHT",       10, int)
 	border_width = env("VAR_BORDER_WIDTH",  1, int)
+
+	DRAW_TIME_UNTIL_NEXT_PHASE = env("VAR_DRAW_TIME_UNTIL_NEXT_PHASE", "true", boolean)
 
 	# ---------------- #
 	# end customizable #
@@ -100,7 +103,7 @@ def main():
 	image_width  = width  + 2 * border_width + 1
 	image_height = height + 2 * border_width + 1
 
-	image = Image.new("RGB", (image_width, image_height))
+	image = Image.new("RGB", (image_width, image_height), "white")
 	draw = ImageDraw.Draw(image)
 
 	draw_border(draw, width, height, border_width, border_color)
@@ -112,7 +115,9 @@ def main():
 
 	(now_minute,
 	sunrise_minute,
-	sunset_minute) = get_time_info_for_latlon(now, LATITUDE, LONGITUDE)
+	sunset_minute,
+	sunrise,
+	sunset) = get_time_info_for_latlon(now, LATITUDE, LONGITUDE)
 
 	(colors_by_unit,
 	sun_count_by_minute,
@@ -128,35 +133,45 @@ def main():
 	draw_day_night_indicator(draw, colors_by_unit, colors, height, border_width)
 	draw_chevron(draw, image_width, image_height, border_width, chevron_color)
 
-	image_base64 = enc_image_base64(image)
-
 	# colors
-	colw = lambda x: ansicolor(x, fg="#dddddc") # xbar reverts to black all equal
-	cold = lambda x: ansicolor(x, fg=COLOR_DAY)
-	coln = lambda x: ansicolor(x, fg=COLOR_NIGHT)
+	colw = lambda x, *y: ansicolor(x, fg="#dddddc", *y) # xbar reverts to black all equal
+	cold = lambda x, *y: ansicolor(x, COLOR_DAY, *y)
+	coln = lambda x, *y: ansicolor(x, COLOR_NIGHT, *y)
 
-	set_rise_info, percent_done_info = get_sunset_sunrise_info(now_minute, sunrise_minute, sunset_minute, HOURS, MINUTES, cold, coln)
+	set_rise_info, percent_done_info, sunrise_in, sunset_in  = get_sunset_sunrise_info(now_minute, sunrise_minute, sunset_minute, HOURS, MINUTES, cold, coln)
+
+	if DRAW_TIME_UNTIL_NEXT_PHASE:
+		draw_time_until_next_phase(draw, sunrise_in, sunset_in, width, height)
+
+	image_base64 = enc_image_base64(image)
+	# main indicator done
 
 	sun_percent, night_percent = get_percents(sun_count_by_minute, night_count_by_minute)
 
-	day_night_ratio_info_header = "%s%s%s" % (
-		cold("day"),       colw(":"), coln("night"),
-	)
-	day_night_ratio_info = "%s%s%s" % (
-		cold(sun_percent), colw(":"), coln(night_percent),
-	)
-	# day_night_ratio_info = "%s%s%s" % (
-	# 	cold(f"day {sun_percent}"), colw(":"), coln(f"{night_percent} night")
-	# )
-	day_night_ratio_time_info = "%s %s" % (
-		cold(format_hours_mins_short(timedelta(minutes=sun_count_by_minute))),
-		coln(format_hours_mins_short(timedelta(minutes=night_count_by_minute))),
-	)
-	# day_night_ratio_full = f"{day_night_ratio_info_header} {day_night_ratio_time_info} ({day_night_ratio_info})"
-	day_night_ratio_full = f"{day_night_ratio_info_header} {day_night_ratio_info}\n{day_night_ratio_time_info}"
+	rise_at        = cold(format_hours_mins_colon(sunrise))
+	set_at         = coln(format_hours_mins_colon(sunset))
+	sun_up_for     = cold(format_hours_mins_short(timedelta(minutes=sun_count_by_minute),   True))
+	night_down_for = coln(format_hours_mins_short(timedelta(minutes=night_count_by_minute), True))
+	up_percent     = cold(sun_percent)
+	down_percent   = coln(night_percent)
+
+	day_night_ratio_full = colw("rise ") + rise_at + colw(" for ") + sun_up_for + "\n" + \
+	                       colw("set  ") + set_at  + colw(" for ") + night_down_for
+
+	image2 = Image.new("RGB", (width + 1, height + 1), "white")
+	draw2 = ImageDraw.Draw(image2)
+	# darken 10% (HSL saturation -10%)
+	colors2 = {
+		"day": "#f2f20d",
+		"night": "#33b1f4",
+	}
+	draw_day_night_indicator(draw2, sorted(colors_by_unit), colors2, height, 0)
+	day_night_ratio_absolute = enc_image_base64(image2)
+	# additional indicator done
 
 	img_b64_sun_percent_thru_year = draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors_year)
 	img_sun_percent_thru_year = f"| image={img_b64_sun_percent_thru_year}"
+	# whole year done
 
 	# equal_spacing_font_arg = "font='Monaco' size=13"
 	equal_spacing_font_arg = ""
@@ -169,7 +184,11 @@ def main():
 
 	{day_night_ratio_full}
 
-
+	{up_percent}{colw(":")}{down_percent}
+	| image={day_night_ratio_absolute}
+	-- {colw("sunrise")} {cold(sunrise)}
+	-- {colw("sunset")}  {coln(sunset)}
+	--
 	-- whole year
 	-- {img_sun_percent_thru_year}
 	"""
@@ -183,7 +202,9 @@ def main():
 # utils
 
 def env(x, default, transform = lambda y: y):
-	return transform(json.loads(os.environ.get(x, default)))
+	return transform(os.environ.get(x, default))
+
+boolean = lambda x: x == "true"
 
 DEBUG = int(os.environ.get("DEBUG", 0))
 def log(*x, lvl=1):
@@ -211,7 +232,7 @@ def get_time_info_for_latlon(now, LATITUDE, LONGITUDE, local=True, lvl=1):
 	log("sunrise minute %s" % sunrise_minute, lvl=lvl)
 	log("sunset  minute %s" % sunset_minute, lvl=lvl)
 	log("", lvl=lvl)
-	return now_minute, sunrise_minute, sunset_minute
+	return now_minute, sunrise_minute, sunset_minute, sunrise, sunset
 
 def classify_units_of_time(now_minute, sunrise_minute, sunset_minute, MINUTES, UNITS, WIDTH_COMPRESSION_FACTOR):
 	# calculate uncompressed to get proper accuracy
@@ -339,6 +360,51 @@ def draw_chevron(draw, image_width, image_height, border_width, chevron_color):
 	draw.polygon(chevron_points, fill=chevron_color)
 	log(f"chevron polygon: {chevron_points}", lvl=2)
 
+def draw_time_until_next_phase(draw, sunrise_in, sunset_in, width, height):
+	# try:
+	# 	# font = ImageFont.load("")
+	# except:
+	font = ImageFont.load_default()
+	CHAR_W = 6
+	CHAR_H = 8
+
+	if sunrise_in < sunset_in:
+		delta = sunrise_in
+	else:
+		delta = sunset_in
+
+	next_phase_in = timedelta(minutes=delta)
+	(next_ph_h, next_ph_m) = parse_hours_mins(next_phase_in)
+
+	if next_ph_h == 0:
+		next_ph_h = str(next_ph_m) + "m"
+		will_display_minute_indicator = False
+	else:
+		next_ph_h = str(next_ph_h)
+		will_display_minute_indicator = True
+
+	next_ph_h      = "-" + next_ph_h
+	char_count     = len(str(next_ph_h))
+	RIGHT_OFFSET   = width - char_count * CHAR_W + 1
+	RIGHT_OFFSET  += -4 if will_display_minute_indicator else 0
+	next_ph_height = (height - CHAR_H) // 2
+
+	draw.text((RIGHT_OFFSET, next_ph_height), "%s" % next_ph_h, font=font, fill=(0, 0, 0))
+
+	if will_display_minute_indicator:
+		min_left  =      next_ph_m // 10
+		min_left += 1 if next_ph_m %  10 >= 5 else 0
+
+		# lower part
+		dotx1 = width - 2
+		doty1 = next_ph_height + 6 + 1 + 1
+
+		# upper part
+		dotx2 = dotx1 + 1
+		doty2 = doty1 - 1 + 1 - min_left + 0
+
+		draw.rectangle([dotx1, doty1, dotx2, doty2], fill=(0, 0, 0))
+
 def draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors):
 	YEAR_DAYS = 365
 	OUR_WIDTH_COMPR_FACT = 12 # factors(1440)
@@ -363,7 +429,7 @@ def draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors):
 
 		# local=False to avoid a daylight savings time jump,
 		# i.e. would look v ugly
-		(now_minute, sunrise_minute, sunset_minute) = get_time_info_for_latlon(day, LATITUDE, LONGITUDE, local=False, lvl=2)
+		(now_minute, sunrise_minute, sunset_minute, *_rest) = get_time_info_for_latlon(day, LATITUDE, LONGITUDE, local=False, lvl=2)
 
 		(colors_by_unit, sun_minutes, night_minutes) = classify_units_of_time(now_minute, sunrise_minute, sunset_minute,
 		                                                                      MINUTES, OUR_UNITS, OUR_WIDTH_COMPR_FACT)
@@ -426,7 +492,7 @@ def get_sunset_sunrise_info(now_minute, sunrise_minute, sunset_minute, HOURS, MI
 		night_done, *_rest = get_percents(done, total, total_count=total)
 		percent_done_info = coln("night %d%% done" % night_done)
 	
-	return set_rise_info, percent_done_info
+	return set_rise_info, percent_done_info, sunrise_in, sunset_in
 
 def _modify_settings():
 	abspath = os.path.abspath(__file__)
@@ -459,6 +525,9 @@ def format_hours_mins_short(timedelta, padmins=False):
 	hh = f"{h}"
 	mm = f"0{m}" if padmins and m <= 9 else m
 	return f"{hh}h{mm}m"
+
+def format_hours_mins_colon(dt):
+	return dt.strftime("%H") + ":" + dt.strftime("%M")
 
 def striplines(x):
 	return "\n".join(
