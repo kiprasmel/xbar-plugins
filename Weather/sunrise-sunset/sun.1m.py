@@ -1,4 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.9"
+# dependencies = [
+#     "suntime==1.3.2",
+#     "pillow==10.3.0",
+#     "ansicolors>=1.1.8",
+#     "scipy>=1.13.1",
+# ]
+# ///
 
 # Copyright (c) 2024 Kipras Melnikovas
 # MIT License
