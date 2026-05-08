@@ -479,7 +479,6 @@ def draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors):
 	sun_counts_in_year  = []
 	dark_counts_in_year = []
 
-	reverse_ordering = True
 	for day_of_year in range(YEAR_DAYS):
 		day += timedelta(days=1)
 
@@ -499,10 +498,6 @@ def draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors):
 		# colors_by_unit = sorted(colors_by_unit) # day up night down
 		# colors_by_unit = reversed(sorted(colors_by_unit)) # night up day down
 
-		if day_of_year == 0:
-			if night_minutes > sun_minutes:
-				reverse_ordering = False
-
 		sun_count  = sum([1 for x in colors_by_unit if x == "day" ])
 		dark_count = len(colors_by_unit) - sun_count
 		sun_counts_in_year.append(sun_count)
@@ -520,26 +515,23 @@ def draw_sun_percent_thru_year(now, LATITUDE, LONGITUDE, MINUTES, colors):
 	except ImportError as e:
 		pass
 
+	week1_sun = sum(sun_counts_in_year[:7])
+	week2_sun = sum(sun_counts_in_year[7:14])
+	day_is_dominant = week2_sun > week1_sun
+
 	for day_of_year in range(YEAR_DAYS):
 		sun_count = sun_counts_in_year[day_of_year]
 		dark_count = dark_counts_in_year[day_of_year]
 
-		if reverse_ordering:
-			sun_count, dark_count = dark_count, sun_count
-
 		x1 = day_of_year
 		x2 = day_of_year
-		y1 = 0
-		y2 = sun_count
-		color = "day"
 
-		draw.rectangle([x1, y1, x2, y2], fill=colors[color])
-
-		y1 = y2
-		y2 = sun_count + dark_count
-		color = "night"
-
-		draw.rectangle([x1, y1, x2, y2], fill=colors[color])
+		if day_is_dominant:
+			draw.rectangle([x1, 0, x2, dark_count], fill=colors["night"])
+			draw.rectangle([x1, dark_count, x2, dark_count + sun_count], fill=colors["day"])
+		else:
+			draw.rectangle([x1, 0, x2, sun_count], fill=colors["day"])
+			draw.rectangle([x1, sun_count, x2, sun_count + dark_count], fill=colors["night"])
 
 	return enc_image_base64(image)
 
